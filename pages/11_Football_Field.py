@@ -1,11 +1,10 @@
 import streamlit as st
+from style import render_page_content, page_footer
 import deal_tool
 import os
 import tempfile
 
-st.set_page_config(page_title="Football Field | Deal Tool", page_icon="🏈", layout="wide")
-st.title("🏈 Football Field Valuation")
-st.caption("DCF, trading comps, and real analyst price targets — combined into one valuation range summary.")
+render_page_content("🏈", "Football Field Valuation", "DCF, trading comps, and real analyst price targets — combined into one valuation range summary.")
 
 ticker = st.text_input("Ticker", placeholder="e.g. ZS, AAPL").strip().upper()
 run = st.button("Build Football Field", type="primary", disabled=not ticker)
@@ -35,3 +34,5 @@ if run and ticker:
 
     except Exception as e:
         st.error(f"Couldn't build the football field: {e}")
+
+page_footer()

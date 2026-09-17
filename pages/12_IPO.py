@@ -1,11 +1,10 @@
 import streamlit as st
+from style import render_page_content, page_footer
 import deal_tool
 import os
 import tempfile
 
-st.set_page_config(page_title="IPO Valuation | Deal Tool", page_icon="🚀", layout="wide")
-st.title("🚀 IPO Valuation")
-st.caption("Peer-multiple valuation for a pre-IPO company — no trading history to anchor to, so this leans on comps.")
+render_page_content("🚀", "IPO Valuation", "Peer-multiple valuation for a pre-IPO company — no trading history to anchor to, so this leans on comps.")
 
 company_name = st.text_input("Company Name", placeholder="e.g. NewCo")
 industry = st.selectbox("Industry", list(deal_tool.INDUSTRY_UNIVERSE.keys()))
@@ -66,3 +65,5 @@ if run:
 
     except Exception as e:
         st.error(f"Couldn't run the IPO valuation: {e}")
+
+page_footer()

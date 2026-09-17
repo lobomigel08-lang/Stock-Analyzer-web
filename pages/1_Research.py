@@ -1,11 +1,10 @@
 import streamlit as st
+from style import render_page_content, page_footer
 import deal_tool
 import os
 import tempfile
 
-st.set_page_config(page_title="Research | Deal Tool", page_icon="🔎", layout="wide")
-st.title("🔎 Equity Research")
-st.caption("A quick pre-call brief: profile, fundamentals, DCF anchor, and recent headlines.")
+render_page_content("🔎", "Equity Research", "A quick pre-call brief: profile, fundamentals, DCF anchor, and recent headlines.")
 
 ticker = st.text_input("Ticker", placeholder="e.g. ZS, AAPL, BHP.AX").strip().upper()
 run = st.button("Run Research", type="primary", disabled=not ticker)
@@ -58,3 +57,5 @@ if run and ticker:
 
     except Exception as e:
         st.error(f"Couldn't run research: {e}")
+
+page_footer()

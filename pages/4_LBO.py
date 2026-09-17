@@ -1,11 +1,10 @@
 import streamlit as st
+from style import render_page_content, page_footer
 import deal_tool
 import os
 import tempfile
 
-st.set_page_config(page_title="LBO | Deal Tool", page_icon="💰", layout="wide")
-st.title("💰 LBO Model")
-st.caption("Entry at market multiple, real circular debt schedule with a 100% cash sweep, MOIC/IRR.")
+render_page_content("💰", "LBO Model", "Entry at market multiple, real circular debt schedule with a 100% cash sweep, MOIC/IRR.")
 
 ticker = st.text_input("Ticker", placeholder="e.g. ZS, AAPL").strip().upper()
 col_a, col_b, col_c = st.columns(3)
@@ -60,3 +59,5 @@ if run and ticker:
 
     except Exception as e:
         st.error(f"Couldn't run the LBO: {e}")
+
+page_footer()

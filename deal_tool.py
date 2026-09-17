@@ -10,17 +10,6 @@ from email.mime.base import MIMEBase
 from email import encoders
 from datetime import datetime, timedelta
 import yfinance as ticker_module
-
-try:
-    # Yahoo Finance's unofficial API requires a session cookie + "crumb"
-    # token, refreshed via a cache yfinance maintains. In some cloud/
-    # container environments, the default cache location isn't reliably
-    # writable, which silently breaks that refresh and produces
-    # "Invalid Crumb" / 401 Unauthorized errors on every request. Giving
-    # it an explicit, known-writable location fixes this in most cases.
-    ticker_module.set_tz_cache_location("/tmp/yfinance_cache")
-except Exception:
-    pass  # best-effort; older yfinance versions may not have this method
 from openpyxl import Workbook, load_workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
@@ -67,43 +56,9 @@ CURRENCY_SYMBOLS = {
 }
 
 
-_YF_SESSION = None
-
-
-def _get_warmed_yf_session():
-    """
-    Attempts to work around yfinance's "Invalid Crumb" authentication
-    failures, which happen far more often from datacenter/cloud IP ranges
-    (like Streamlit Cloud's) than from a home connection — Yahoo's bot
-    detection treats them differently. This isn't guaranteed to fix it
-    (it's Yahoo's own anti-bot measure, not something we fully control),
-    but a realistic browser User-Agent on the session yfinance uses is
-    the most commonly reported working mitigation.
-    """
-    global _YF_SESSION
-    if _YF_SESSION is None:
-        try:
-            import requests
-            session = requests.Session()
-            session.headers.update({
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-                              "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-            })
-            _YF_SESSION = session
-        except Exception:
-            _YF_SESSION = False  # requests unavailable or session setup failed; fall back to default
-    return _YF_SESSION or None
-
-
 def get_ticker(ticker_symbol):
     """Single point of contact with yfinance. If the data source ever changes,
     or retry/caching logic is needed later, this is the only place to edit."""
-    session = _get_warmed_yf_session()
-    if session is not None:
-        try:
-            return ticker_module.Ticker(ticker_symbol, session=session)
-        except Exception:
-            pass  # some yfinance versions reject a custom session; fall back
     return ticker_module.Ticker(ticker_symbol)
 
 
@@ -180,17 +135,7 @@ def resolve_company(ticker_symbol):
     everything downstream needs.
     """
     ticker = get_ticker(ticker_symbol)
-    try:
-        info = ticker.info or {}
-    except Exception:
-        # yfinance's own internals can throw directly (a malformed/blocked
-        # response, rate limiting, a network hiccup) rather than just
-        # returning empty data — without this, that raw library exception
-        # propagates unhandled through every single caller in this tool.
-        raise ValueError(
-            f"Could not resolve '{ticker_symbol}'. Check the symbol and exchange "
-            f"suffix — e.g. Tokyo '7203.T', Frankfurt 'SAP.DE', Sydney 'BHP.AX'."
-        )
+    info = ticker.info or {}
 
     has_price = info.get("currentPrice") is not None or info.get("regularMarketPrice") is not None
     if not info or not has_price:
@@ -3838,7 +3783,8 @@ def build_pitch_book_sotp(result, output_path):
 
     page += 1; s = _blank_slide(prs); _add_section_header(s, "Equity Value Bridge", "From total enterprise value to implied price per share", logo_info, None, page)
     _add_waterfall(s, .8, 1.55, 11.6, 4.6, ["Total EV", "Net Debt", "Equity Value"],
-                    [result["total_ev"], -result["net_debt"], result["equity_value"]], title="EV to Equity Value Bridge", number_format='#,##0')
+                    [result["total_ev"], -result["net_debt"], result["equity_value"]], title="EV to Equity Value Bridge",
+                    number_format='#,##0', is_total=[True, False, True])
     if result["implied_price_per_share"] is not None:
         _add_banner(s, f"Implied Price / Share: {sym}{result['implied_price_per_share']:,.2f}  ({result['shares_outstanding']:,.0f} shares outstanding)", 6.35, fill=PPT_WARM_GRAY)
 
@@ -4114,9 +4060,9 @@ import math
 
 # Same palette as the Excel exports (HEADER_FILL / TITLE_FONT use 1F4E78)
 # so a pitch book and its supporting workbook read as one product.
-PPT_NAVY = RGBColor(0x1F, 0x4E, 0x78)
-PPT_NAVY_2 = RGBColor(0x1F, 0x4E, 0x78)
-PPT_ACCENT = RGBColor(0x2E, 0x75, 0xB6)
+PPT_NAVY = RGBColor(0x0F, 0x2A, 0x4A)
+PPT_NAVY_2 = RGBColor(0x0F, 0x2A, 0x4A)
+PPT_ACCENT = RGBColor(0xE8, 0x80, 0x1C)
 PPT_TEAL = RGBColor(0x00, 0x8C, 0x95)
 PPT_GREEN = RGBColor(0x35, 0x8A, 0x3C)
 PPT_RED = RGBColor(0xB5, 0x2B, 0x35)
@@ -4193,7 +4139,7 @@ def _add_title_slide(prs, title, subtitle, info=None, ticker=None, date_text=Non
     if date_text:
         _add_textbox(slide, 1, 4.85, 5.5, 0.35, date_text, size=11, color=RGBColor(0xC6, 0xD5, 0xE7))
     if info is not None:
-        _add_logo(slide, info, ticker=ticker, left=10.9, top=2.45, size=1.15)
+        _add_logo(slide, info, ticker=ticker, left=10.04, top=2.15, size=0.55)
     return slide
 
 
@@ -4404,29 +4350,81 @@ def _add_table(slide, left, top, width, height, headers, rows, col_widths=None, 
     return table
 
 
-def _add_logo(slide, info_or_name, ticker=None, left=11.95, top=0.25, size=0.75):
-    """Real logo, tried in order: yfinance -> Wikipedia (free, no key) ->
-    Finnhub (needs a key) -> a clean monogram. Best-effort throughout, so
-    a blocked image request or missing source never breaks deck generation."""
-    info = info_or_name if isinstance(info_or_name, dict) else {}
-    name = info.get('shortName') or info.get('longName') or info_or_name or ticker or 'Co.'
-    logo_url = fetch_best_available_logo(info, ticker or '', str(name))
-    if logo_url:
-        try:
-            req = Request(logo_url, headers={'User-Agent': 'Mozilla/5.0'})
-            raw = urlopen(req, timeout=5).read()
-            slide.shapes.add_picture(BytesIO(raw), Inches(left), Inches(top), height=Inches(size))
-            return
-        except Exception:
-            pass
-    initials = ''.join(w[0] for w in re.findall(r'[A-Za-z0-9]+', str(name))[:2]).upper()
-    initials = initials or (str(ticker or 'CO')[:2].upper())
-    c = slide.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, Inches(left), Inches(top), Inches(size), Inches(size))
-    c.fill.solid(); c.fill.fore_color.rgb = PPT_NAVY; c.line.fill.background()
-    tf = c.text_frame; tf.clear(); tf.vertical_anchor = MSO_ANCHOR.MIDDLE
-    p = tf.paragraphs[0]; p.alignment = PP_ALIGN.CENTER
-    r = p.add_run(); r.text = initials; r.font.size = Pt(17); r.font.bold = True
-    r.font.color.rgb = PPT_WHITE; r.font.name = 'Aptos'
+_CATALYST_LOGO_PNG_CACHE = None
+
+
+def _generate_catalyst_logo_png():
+    """
+    Generates the full Catalyst wordmark (navy chip background, orange
+    ascending bars, white trend line and dot, "Catalyst" text) as PNG
+    bytes — matching the full logo design used in the web app, not just
+    the compact icon. Cached after first generation. Uses Pillow's own
+    bundled font (not a system font path) since this needs to render
+    identically whether run locally on macOS or in a Linux cloud
+    environment (Streamlit Cloud, GitHub Actions).
+    """
+    global _CATALYST_LOGO_PNG_CACHE
+    if _CATALYST_LOGO_PNG_CACHE is not None:
+        return _CATALYST_LOGO_PNG_CACHE
+    from PIL import Image, ImageDraw, ImageFont
+    scale = 10  # render at 10x then no downsampling needed; keeps text crisp
+    w, h = 46 * scale, 9 * scale
+    img = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(img)
+    navy = (15, 42, 74, 255)
+    orange = (232, 128, 28, 255)
+    white = (255, 255, 255, 255)
+
+    radius = int(1.4 * scale)
+    draw.rounded_rectangle([0, 0, w - 1, h - 1], radius=radius, fill=navy)
+
+    def bar(x, y, bw, bh):
+        draw.rounded_rectangle([x * scale, y * scale, (x + bw) * scale, (y + bh) * scale],
+                                radius=max(int(0.3 * scale), 1), fill=orange)
+
+    bar(2, 5.4, 1.3, 2.6)
+    bar(4, 3.6, 1.3, 4.4)
+    bar(6, 1.8, 1.3, 6.2)
+
+    points = [(2.65 * scale, 5.0 * scale), (4.65 * scale, 3.2 * scale), (6.65 * scale, 1.4 * scale), (7.9 * scale, 0.6 * scale)]
+    draw.line(points, fill=white, width=max(int(0.45 * scale), 1), joint="curve")
+    dot_r = 0.45 * scale
+    dx, dy = 7.9 * scale, 0.6 * scale
+    draw.ellipse([dx - dot_r, dy - dot_r, dx + dot_r, dy + dot_r], fill=white)
+
+    try:
+        font = ImageFont.load_default(size=int(5.2 * scale))
+    except TypeError:
+        font = ImageFont.load_default()  # older Pillow without size support
+    text = "Catalyst"
+    text_x = 10.5 * scale
+    bbox = draw.textbbox((0, 0), text, font=font)
+    text_h = bbox[3] - bbox[1]
+    text_y = (h - text_h) / 2 - bbox[1]
+    # Faux-bold: draw the text several times at tiny offsets, since Pillow's
+    # bundled default font only ships a regular weight, not a bold one.
+    offset = max(scale * 0.09, 1)
+    for dx_off, dy_off in [(0, 0), (offset, 0), (0, offset), (offset, offset)]:
+        draw.text((text_x + dx_off, text_y + dy_off), text, fill=white, font=font)
+
+    buf = BytesIO()
+    img.save(buf, format="PNG")
+    _CATALYST_LOGO_PNG_CACHE = buf.getvalue()
+    return _CATALYST_LOGO_PNG_CACHE
+
+
+def _add_logo(slide, info_or_name=None, ticker=None, left=11.52, top=0.45, size=0.28):
+    """
+    Places the Catalyst brand mark on the slide — every pitchbook now
+    carries consistent Catalyst branding instead of a per-company logo.
+    Same signature as before (info_or_name/ticker are accepted but
+    unused) so every existing call site works unchanged.
+    """
+    try:
+        png_bytes = _generate_catalyst_logo_png()
+        slide.shapes.add_picture(BytesIO(png_bytes), Inches(left), Inches(top), height=Inches(size))
+    except Exception:
+        pass  # best-effort; branding should never break deck generation
 
 
 def _add_footer(slide, page_no, source=None, confidential=True):
@@ -4456,7 +4454,7 @@ def _add_divider_slide(prs, title, subtitle=None, info=None, ticker=None, page_n
     band2 = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, Inches(0), Inches(6.35), Inches(SLIDE_WIDTH_IN), Inches(0.65))
     band2.fill.solid(); band2.fill.fore_color.rgb = PPT_NAVY; band2.line.fill.background()
     if info is not None:
-        _add_logo(slide, info, ticker=ticker, left=0.65, top=6.72, size=0.48)
+        _add_logo(slide, info, ticker=ticker, left=0.65, top=6.75, size=0.40)
     if page_no is not None:
         _add_footer(slide, page_no, source=None)
     return slide
@@ -4558,16 +4556,27 @@ def _add_line_chart(slide, left, top, width, height, categories, series, title=N
     return chart
 
 
-def _add_waterfall(slide, left, top, width, height, labels, values, title=None, number_format='#,##0'):
-    """Bank-style bridge drawn with shapes, so it doesn't depend on a
-    third-party waterfall-chart library."""
+def _add_waterfall(slide, left, top, width, height, labels, values, title=None, number_format='#,##0', is_total=None):
+    """
+    Bank-style bridge drawn with shapes, so it doesn't depend on a
+    third-party waterfall-chart library. `values` normally accumulate
+    left-to-right as deltas. Pass `is_total` (a list of booleans, same
+    length as values) to mark specific bars as absolute subtotals
+    instead — these draw as a full bar from the zero baseline to their
+    own value and RESET the running cumulative to it, rather than
+    stacking on top of an already-complete sum (the correct behavior
+    for "Enterprise Value" / "Equity Value" style subtotal bars —
+    without this, passing an absolute total where a delta was expected
+    silently doubles the cumulative from that point on).
+    """
+    is_total = is_total or [False] * len(values)
     max_abs = max([abs(v) for v in values] + [1.0])
     baseline = top + height * 0.78
     chart_h = height * 0.62
     x0 = left; step = width / max(len(values), 1); bar_w = step * 0.55; cumulative = 0
     _add_textbox(slide, left, top - 0.30, width, 0.3, title or '', size=12, bold=True, color=PPT_NAVY)
     for i, (lab, val) in enumerate(zip(labels, values)):
-        if i == 0:
+        if i == 0 or is_total[i]:
             start, end = 0, val
         else:
             start, end = cumulative, cumulative + val
@@ -4575,9 +4584,12 @@ def _add_waterfall(slide, left, top, width, height, labels, values, title=None, 
         h = chart_h * abs(hi - lo) / max_abs
         y = baseline - chart_h * hi / max_abs if hi >= 0 else baseline
         sh = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, Inches(x0 + i * step + step * 0.22), Inches(y), Inches(bar_w), Inches(max(h, 0.02)))
-        sh.fill.solid(); sh.fill.fore_color.rgb = PPT_GREEN if val >= 0 else PPT_RED; sh.line.fill.background()
+        sh.fill.solid()
+        sh.fill.fore_color.rgb = PPT_NAVY if is_total[i] else (PPT_GREEN if val >= 0 else PPT_RED)
+        sh.line.fill.background()
         _add_textbox(slide, x0 + i * step, baseline + 0.10, step, 0.42, lab, size=8.5, color=PPT_DARK_TEXT, align=PP_ALIGN.CENTER)
-        _add_textbox(slide, x0 + i * step + step * 0.02, y - 0.26, step * 0.96, 0.22, f"{val:+,.1f}", size=8.5, bold=True, color=PPT_DARK_TEXT, align=PP_ALIGN.CENTER)
+        label_text = f"{val:,.1f}" if is_total[i] else f"{val:+,.1f}"
+        _add_textbox(slide, x0 + i * step + step * 0.02, y - 0.26, step * 0.96, 0.22, label_text, size=8.5, bold=True, color=PPT_DARK_TEXT, align=PP_ALIGN.CENTER)
         cumulative = end
     ln = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, Inches(left), Inches(baseline), Inches(width), Inches(0.015))
     ln.fill.solid(); ln.fill.fore_color.rgb = PPT_MID_GRAY; ln.line.fill.background()
@@ -4788,8 +4800,8 @@ def build_pitch_book_research(research, output_path):
     _add_textbox(s, .75, 1.35, 7.5, 2.05, desc, size=11, color=PPT_DARK_TEXT)
     from_rows = [("Exchange", c.get("exchange")), ("Country", c.get("country")), ("Sector", c.get("sector")), ("Industry", c.get("industry")), ("Employees", info.get("fullTimeEmployees"))]
     _add_table(s, 8.55, 1.35, 3.9, 3.3, ["Metric", "Value"], [[str(a), str(b)] for a, b in from_rows], col_widths=[1.6, 2.3], font_size=8.8, first_col_bold=True)
-    _add_bullet_box(s, .75, 4.05, 5.75, 1.85, "Operating Model", ["Evaluate revenue drivers, unit economics, gross-margin structure, operating leverage and FCF conversion."], PPT_NAVY)
-    _add_bullet_box(s, 6.75, 4.05, 5.75, 1.85, "Data Quality", ["Descriptions and statistics depend on the available data feed; missing fields are left unavailable, not fabricated."], PPT_GOLD)
+    _add_bullet_box(s, .75, 4.65, 5.75, 1.85, "Operating Model", ["Evaluate revenue drivers, unit economics, gross-margin structure, operating leverage and FCF conversion."], PPT_NAVY)
+    _add_bullet_box(s, 6.75, 4.65, 5.75, 1.85, "Data Quality", ["Descriptions and statistics depend on the available data feed; missing fields are left unavailable, not fabricated."], PPT_GOLD)
 
     years, rev, gp, ni = _research_history_arrays(research)
     page += 1; s = _blank_slide(prs); _add_section_header(s, "Historical Financial Performance", "Reported financial trajectory where available", info, ticker, page)
@@ -4902,7 +4914,7 @@ def build_pitch_book_research(research, output_path):
     if dcf:
         _add_waterfall(s, .8, 1.45, 7.2, 4.7, ["PV of FCF", "PV of TV", "Enterprise Value", "Net Debt", "Equity Value"],
                         [sum(dcf.get("discounted_fcf", [])), dcf.get("enterprise_value", 0) - sum(dcf.get("discounted_fcf", [])), dcf.get("enterprise_value", 0), -dcf.get("net_debt", 0), dcf.get("equity_value", 0)],
-                        title="DCF Enterprise-to-Equity Bridge", number_format='#,##0')
+                        title="DCF Enterprise-to-Equity Bridge", number_format='#,##0', is_total=[False, False, True, False, True])
         _add_bullet_box(s, 8.25, 1.55, 4.1, 3.8, "Key Takeaway",
                          [f"DCF implies {sym}{dcf.get('implied_share_price', 0):,.2f} per share versus {sym}{dcf.get('current_price', 0):,.2f} current, "
                           f"{dcf.get('upside', 0):+.1%} upside / downside."], PPT_NAVY)
@@ -4981,10 +4993,6 @@ def build_pitch_book_ma(deal, output_path):
     page = 1
     _add_title_slide(prs, f"{deal['acquirer_name']} / {deal['target_name']}",
                       f"{acq} acquisition of {tgt}  |  M&A Transaction Materials", ti, tgt, today)
-    try:
-        _add_logo(prs.slides[0], ai, ticker=acq, left=9.45, top=2.45, size=1.05)
-    except Exception:
-        pass
     page += 1; _add_disclaimer_slide(prs)
     page += 1; _add_toc_slide(prs, ["Executive Summary", "Transaction Rationale", "Acquirer & Target Overview",
                                      "Valuation Analysis", "Deal Mechanics", "Synergies & Accretion / Dilution",
@@ -5067,7 +5075,7 @@ def build_pitch_book_ma(deal, output_path):
     page += 1; s = _blank_slide(prs); _add_section_header(s, "Synergy Bridge", "Illustrative run-rate synergy build", ti, tgt, page)
     _add_waterfall(s, .7, 1.55, 11.4, 4.6, ["Target NI", "Synergies", "New Debt Interest", "Cash Opp. Cost", "Purchase Acct.", "Pro Forma NI"],
                     [deal['target_net_income'], deal['aftertax_synergies'], -deal['aftertax_interest_on_new_debt'], -deal['aftertax_foregone_income_on_cash'], -deal['aftertax_incremental_da_amort'], deal['combined_net_income']],
-                    title="Illustrative Net Income Bridge", number_format='#,##0')
+                    title="Illustrative Net Income Bridge", number_format='#,##0', is_total=[False, False, False, False, False, True])
     _add_banner(s, f"Modeled after-tax synergies: {tcs}{deal['aftertax_synergies']:,.0f}; timing/one-time costs not separately modeled.", 6.3, fill=PPT_WARM_GRAY)
 
     page += 1; s = _blank_slide(prs); _add_section_header(s, "Purchase Accounting", "Purchase price allocation and its impact on pro forma earnings", ti, tgt, page)
@@ -5217,7 +5225,7 @@ def build_pitch_book_ipo(ipo, currency_symbol, output_path):
     shares = ipo.get("shares_outstanding_post_ipo"); equity = shares * base if shares else None
     if equity is not None:
         _add_waterfall(s, .8, 1.5, 7.0, 4.6, ["Equity Value", "Net Debt", "Enterprise Value"], [equity, ipo.get("net_debt", 0), equity + (ipo.get("net_debt", 0) or 0)],
-                        title="Equity-to-Enterprise Value Bridge", number_format='#,##0')
+                        title="Equity-to-Enterprise Value Bridge", number_format='#,##0', is_total=[False, False, True])
     rows = [("Post-IPO Shares", f"{shares:,.0f}" if shares else "N/A"), ("Base Price", f"{sym}{base:,.2f}"),
             ("Equity Value", f"{sym}{equity:,.0f}" if equity is not None else "N/A"), ("Net Debt", f"{sym}{ipo.get('net_debt', 0):,.0f}")]
     _add_table(s, 8.15, 1.55, 4.0, 3.7, ["Metric", "Value"], [[a, b] for a, b in rows], col_widths=[1.8, 1.6], font_size=9.2, first_col_bold=True)
@@ -5387,7 +5395,7 @@ def build_pitch_book_lbo(result, output_path):
     exit_equity = exit_ev - debt_series[-1]
     _add_waterfall(s, .8, 1.55, 11.6, 4.6, ["Sponsor Equity (Entry)", "EBITDA Growth Value", "Debt Paydown Value", "Exit Equity Value"],
                     [sponsor_equity, (exit_ev - entry_ev), (new_debt - debt_series[-1]), exit_equity],
-                    title="Illustrative Value Creation Bridge", number_format='#,##0')
+                    title="Illustrative Value Creation Bridge", number_format='#,##0', is_total=[False, False, False, True])
     _add_bullet_box(s, .8, 6.35, 11.6, .8, "", [f"Exit Enterprise Value: {sym}{exit_ev:,.0f}  |  Exit Equity Value: {sym}{exit_equity:,.0f}  |  MOIC: {base_moic:.2f}x  |  IRR: {base_irr:.1%}" if base_moic else "Returns unavailable"], PPT_NAVY)
 
     page += 1; s = _blank_slide(prs); _add_section_header(s, "Returns Sensitivity", "MOIC across entry and exit multiple assumptions — each cell independently recomputed", logo_info, result["ticker"], page)

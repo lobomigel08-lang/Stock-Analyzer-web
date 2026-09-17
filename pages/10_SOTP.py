@@ -1,11 +1,10 @@
 import streamlit as st
+from style import render_page_content, page_footer
 import deal_tool
 import os
 import tempfile
 
-st.set_page_config(page_title="SOTP | Deal Tool", page_icon="🧩", layout="wide")
-st.title("🧩 Sum-of-the-Parts Valuation")
-st.caption("Segment financials and multiples are supplied directly — automated data providers don't reliably expose true segment-level data.")
+render_page_content("🧩", "Sum-of-the-Parts Valuation", "Segment financials and multiples are supplied directly — automated data providers don't reliably expose true segment-level data.")
 
 company_name = st.text_input("Company Name", placeholder="e.g. Conglomerate Inc")
 
@@ -75,3 +74,5 @@ if run:
 
     except Exception as e:
         st.error(f"Couldn't run the valuation: {e}")
+
+page_footer()

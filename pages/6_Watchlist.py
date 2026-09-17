@@ -1,8 +1,8 @@
 import streamlit as st
+from style import render_page_content, page_footer
 import deal_tool
 
-st.set_page_config(page_title="Watchlist | Deal Tool", page_icon="👀", layout="wide")
-st.title("👀 Watchlist")
+render_page_content("👀", "Watchlist", "")
 
 col1, col2 = st.columns([3, 1])
 with col1:
@@ -48,3 +48,5 @@ else:
             c1, c2 = st.columns([2, 6])
             c1.write(f"**{ticker_symbol}**")
             c2.error(str(e))
+
+page_footer()

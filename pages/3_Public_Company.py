@@ -1,11 +1,10 @@
 import streamlit as st
+from style import render_page_content, page_footer
 import deal_tool
 import os
 import tempfile
 
-st.set_page_config(page_title="Public Company Valuation | Deal Tool", page_icon="🏢", layout="wide")
-st.title("🏢 Public Company Valuation")
-st.caption("Trading performance, ownership, multiples, analyst consensus, DCF, and comps — combined into one package.")
+render_page_content("🏢", "Public Company Valuation", "Trading performance, ownership, multiples, analyst consensus, DCF, and comps — combined into one package.")
 
 ticker = st.text_input("Ticker", placeholder="e.g. ZS, AAPL, BHP.AX").strip().upper()
 run = st.button("Run Analysis", type="primary", disabled=not ticker)
@@ -103,3 +102,5 @@ if run and ticker:
 
     except Exception as e:
         st.error(f"Couldn't run the analysis: {e}")
+
+page_footer()

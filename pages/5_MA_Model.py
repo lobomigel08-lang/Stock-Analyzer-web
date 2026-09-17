@@ -1,11 +1,10 @@
 import streamlit as st
+from style import render_page_content, page_footer
 import deal_tool
 import os
 import tempfile
 
-st.set_page_config(page_title="M&A Model | Deal Tool", page_icon="🤝", layout="wide")
-st.title("🤝 M&A Model")
-st.caption("Accretion/dilution, purchase price allocation, and sources & uses.")
+render_page_content("🤝", "M&A Model", "Accretion/dilution, purchase price allocation, and sources & uses.")
 
 col_a, col_b = st.columns(2)
 acquirer = col_a.text_input("Acquirer Ticker", placeholder="e.g. PANW").strip().upper()
@@ -73,3 +72,5 @@ if run and acquirer and target:
 
     except Exception as e:
         st.error(f"Couldn't run the M&A model: {e}")
+
+page_footer()

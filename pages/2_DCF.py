@@ -1,12 +1,11 @@
 import streamlit as st
+from style import render_page_content, page_footer
 import deal_tool
 import io
 import os
 import tempfile
 
-st.set_page_config(page_title="DCF | Deal Tool", page_icon="📈", layout="wide")
-st.title("📈 DCF Valuation")
-st.caption("Discounted cash flow model with WACC build-up, scenario toggle, and a live Excel export.")
+render_page_content("📈", "DCF Valuation", "Discounted cash flow model with WACC build-up, scenario toggle, and a live Excel export.")
 
 ticker = st.text_input("Ticker", placeholder="e.g. AAPL, ZS, BHP.AX").strip().upper()
 run = st.button("Run DCF", type="primary", disabled=not ticker)
@@ -52,3 +51,5 @@ if run and ticker:
 
     except Exception as e:
         st.error(f"Couldn't run the DCF: {e}")
+
+page_footer()

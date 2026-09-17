@@ -1,11 +1,10 @@
 import streamlit as st
+from style import render_page_content, page_footer
 import deal_tool
 import os
 import tempfile
 
-st.set_page_config(page_title="Comps | Deal Tool", page_icon="📋", layout="wide")
-st.title("📋 Trading Comparables")
-st.caption("Peer benchmarking with percentile bands, live-formula Excel export.")
+render_page_content("📋", "Trading Comparables", "Peer benchmarking with percentile bands, live-formula Excel export.")
 
 ticker = st.text_input("Ticker", placeholder="e.g. ZS, AAPL").strip().upper()
 max_peers = st.slider("Max Peers", 3, 10, 5)
@@ -52,3 +51,5 @@ if run and ticker:
 
     except Exception as e:
         st.error(f"Couldn't run comps: {e}")
+
+page_footer()

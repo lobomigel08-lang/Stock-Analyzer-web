@@ -1,12 +1,11 @@
 import streamlit as st
+from style import render_page_content, page_footer
 import deal_tool
 import os
 import tempfile
 from datetime import datetime
 
-st.set_page_config(page_title="Portfolio | Deal Tool", page_icon="💼", layout="wide")
-st.title("💼 Portfolio Tracker")
-st.caption("Australian CGT — FIFO cost-basis matching, 50% discount for holdings over 12 months. Planning estimate only, not tax advice.")
+render_page_content("💼", "Portfolio Tracker", "Australian CGT — FIFO cost-basis matching, 50% discount for holdings over 12 months. Planning estimate only, not tax advice.")
 
 tab_holdings, tab_transactions, tab_tax = st.tabs(["Holdings", "Log a Transaction", "Tax Report"])
 
@@ -115,3 +114,5 @@ with tab_tax:
                 with open(real_path, "rb") as f:
                     st.download_button("Download Tax Report", f.read(), file_name=os.path.basename(real_path),
                                         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+
+page_footer()
