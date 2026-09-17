@@ -1,0 +1,20 @@
+venv/
+__pycache__/
+*.pyc
+
+# Local data that shouldn't be shared or version-controlled
+watchlist.json
+portfolio.json
+tax_settings.json
+Portfolio_CGT_Report.xlsx
+daily_summaries/
+
+# Generated reports (recreated on demand, don't need to be tracked)
+*.xlsx
+*.pptx
+
+# macOS
+.DS_Store
+
+# VS Code
+.vscode/

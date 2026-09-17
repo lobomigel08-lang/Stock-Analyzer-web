@@ -1,0 +1,5 @@
+streamlit
+yfinance
+openpyxl
+python-pptx
+pandas
