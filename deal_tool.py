@@ -67,9 +67,43 @@ CURRENCY_SYMBOLS = {
 }
 
 
+_YF_SESSION = None
+
+
+def _get_warmed_yf_session():
+    """
+    Attempts to work around yfinance's "Invalid Crumb" authentication
+    failures, which happen far more often from datacenter/cloud IP ranges
+    (like Streamlit Cloud's) than from a home connection — Yahoo's bot
+    detection treats them differently. This isn't guaranteed to fix it
+    (it's Yahoo's own anti-bot measure, not something we fully control),
+    but a realistic browser User-Agent on the session yfinance uses is
+    the most commonly reported working mitigation.
+    """
+    global _YF_SESSION
+    if _YF_SESSION is None:
+        try:
+            import requests
+            session = requests.Session()
+            session.headers.update({
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                              "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+            })
+            _YF_SESSION = session
+        except Exception:
+            _YF_SESSION = False  # requests unavailable or session setup failed; fall back to default
+    return _YF_SESSION or None
+
+
 def get_ticker(ticker_symbol):
     """Single point of contact with yfinance. If the data source ever changes,
     or retry/caching logic is needed later, this is the only place to edit."""
+    session = _get_warmed_yf_session()
+    if session is not None:
+        try:
+            return ticker_module.Ticker(ticker_symbol, session=session)
+        except Exception:
+            pass  # some yfinance versions reject a custom session; fall back
     return ticker_module.Ticker(ticker_symbol)
 
 
