@@ -10,6 +10,17 @@ from email.mime.base import MIMEBase
 from email import encoders
 from datetime import datetime, timedelta
 import yfinance as ticker_module
+
+try:
+    # Yahoo Finance's unofficial API requires a session cookie + "crumb"
+    # token, refreshed via a cache yfinance maintains. In some cloud/
+    # container environments, the default cache location isn't reliably
+    # writable, which silently breaks that refresh and produces
+    # "Invalid Crumb" / 401 Unauthorized errors on every request. Giving
+    # it an explicit, known-writable location fixes this in most cases.
+    ticker_module.set_tz_cache_location("/tmp/yfinance_cache")
+except Exception:
+    pass  # best-effort; older yfinance versions may not have this method
 from openpyxl import Workbook, load_workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
